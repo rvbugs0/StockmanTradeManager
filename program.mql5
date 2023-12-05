@@ -3,13 +3,21 @@
 //--- input parameters of the script
 input string          InpName="HLine";     // Line name
 input int             InpPrice=25;         // Line price, %
-input color           InpColor=clrRed;     // Line color
+input color           InpColor=clrBlue;     // Line color
 input ENUM_LINE_STYLE InpStyle=STYLE_DASH; // Line style
 input int             InpWidth=3;          // Line width
 input bool            InpBack=false;       // Background line
 input bool            InpSelection=true;   // Highlight to move
 input bool            InpHidden=true;      // Hidden in the object list
-input long            InpZOrder=0;         // Priority for mouse click
+input long            InpZOrder=100;         // Priority for mouse click
+
+
+
+
+double slPrice = 0;
+double targetPrice = 0;
+
+
 //+------------------------------------------------------------------+
 //| Create the horizontal line                                       |
 //+------------------------------------------------------------------+
@@ -56,6 +64,9 @@ bool HLineCreate(const long            chart_ID=0,        // chart's ID
 //--- set the priority for receiving the event of a mouse click in the chart
    ObjectSetInteger(chart_ID,name,OBJPROP_ZORDER,z_order);
 //--- successful execution
+
+  
+  // ObjectCreate(0, "Circle", OBJ_ELLIPSE, 0, middleX - circleRadius, currentPrice - circleRadius, middleX + circleRadius, currentPrice + circleRadius);
    return(true);
   }
 //+------------------------------------------------------------------+
@@ -109,29 +120,24 @@ int OnInit()
       Print("Error! Incorrect values of input parameters!");
       return(INIT_FAILED);
      }
-//--- price array size
-   int accuracy=1000;
-//--- array for storing the price values to be used
-//--- for setting and changing line anchor point's coordinates
-   double price[];
-//--- memory allocation
-   ArrayResize(price,accuracy);
-//--- fill the array of prices
-//--- find the highest and lowest values of the chart
-   double max_price=ChartGetDouble(0,CHART_PRICE_MAX);
-   double min_price=ChartGetDouble(0,CHART_PRICE_MIN);
-//--- define a change step of a price and fill the array
-   double step=(max_price-min_price)/accuracy;
-   for(int i=0;i<accuracy;i++)
-      price[i]=min_price+i*step;
-//--- define points for drawing the line
-   int p=InpPrice*(accuracy-1)/100;
+
 //--- create a horizontal line
-   if(!HLineCreate(0,InpName,0,price[p],InpColor,InpStyle,InpWidth,InpBack,
-      InpSelection,InpHidden,InpZOrder))
+   if(!HLineCreate(0,InpName,0,0.0,InpColor,InpStyle,InpWidth,InpBack,
+      false,InpHidden,InpZOrder))
      {
        return(INIT_FAILED);
      }
+    if(!HLineCreate(0,"SL_LINE",0,0.0,clrRed,STYLE_SOLID,10,InpBack,
+      true,InpHidden,InpZOrder))
+     {
+       return(INIT_FAILED);
+     }
+    
+    if(!HLineCreate(0,"TARGET_LINE",0,0.0,clrGreen,STYLE_SOLID,10,InpBack,
+      true,InpHidden,InpZOrder))
+     {
+       return(INIT_FAILED);
+     }     
      
      
   /*   
@@ -165,13 +171,25 @@ int OnInit()
    Sleep(1000);
 //---
 */
+Print("both lines ");
 
    return(INIT_SUCCEEDED);
 }
   
   
+  
+  
+  
   void OnTick(){
+   //updating current price line
   double  currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-  Print(HLineMove(0,InpName,currentPrice));
+  HLineMove(0,InpName,currentPrice);
+  if(slPrice==0){
+  slPrice = currentPrice - SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10.0;
+  targetPrice = currentPrice+   SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 20.0;
+  HLineMove(0,"SL_LINE",slPrice);
+  HLineMove(0,"TARGET_LINE",targetPrice);
+  }
+  
 
   }
