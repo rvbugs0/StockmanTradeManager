@@ -1,7 +1,7 @@
 //--- display window of the input parameters during the script's launch
 #property script_show_inputs
 //--- input parameters of the script
-input string          InpName="HLine";     // Line name
+
 input int             InpPrice=25;         // Line price, %
 input color           InpColor=clrBlue;     // Line color
 input ENUM_LINE_STYLE InpStyle=STYLE_DASH; // Line style
@@ -19,7 +19,7 @@ input string           InpFont="Arial";             // Font
 input int              InpFontSize=14;              // Font size
 input color            InpBackColor=C'236,233,216'; // Background color
 input color            InpBorderColor=clrNONE;      // Border color
-input bool             InpState=true;              // Pressed/Released
+input bool             InpState=false;              // Pressed/Released
 
 
 input int               InpX=150;                // X-axis distance
@@ -30,7 +30,9 @@ input ENUM_ANCHOR_POINT InpAnchor=ANCHOR_CENTER; // Anchor type
 double slPrice = 0;
 double targetPrice = 0;
 double currentPrice = 0;
-
+double standardLotSize = 100000.0;
+bool tradeActive = false;
+ long magic_number= 5555;
 
 //+------------------------------------------------------------------+
 //| Create the horizontal line                                       |
@@ -136,19 +138,19 @@ int OnInit()
      }
 
 //--- create a horizontal line
-   if(!HLineCreate(0,InpName,0,0.0,InpColor,InpStyle,InpWidth,InpBack,
-      false,InpHidden,InpZOrder))
+   if(!HLineCreate(0,"PRICE_LINE",0,0.0,InpColor,InpStyle,InpWidth,InpBack,
+      false,InpHidden,93))
      {
        return(INIT_FAILED);
      }
     if(!HLineCreate(0,"SL_LINE",0,0.0,clrRed,InpStyle,10,InpBack,
-      true,InpHidden,InpZOrder))
+      true,InpHidden,94))
      {
        return(INIT_FAILED);
      }
     
     if(!HLineCreate(0,"TARGET_LINE",0,0.0,clrGreen,InpStyle,10,InpBack,
-      true,InpHidden,InpZOrder))
+      true,InpHidden,95))
      {
        return(INIT_FAILED);
      }     
@@ -200,16 +202,15 @@ Print("both lines ");
   void OnTick(){
    //updating current price line
   currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-  HLineMove(0,InpName,currentPrice);
+  HLineMove(0,"PRICE_LINE",currentPrice);
   if(slPrice==0){
-  slPrice = currentPrice - SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10.0;
-  targetPrice = currentPrice+   SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 20.0;
+  slPrice = currentPrice - SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 100.0;
+  targetPrice = currentPrice+   SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 200.0;
   HLineMove(0,"SL_LINE",slPrice);
   HLineMove(0,"TARGET_LINE",targetPrice);
-
+  
   }
-  string s = "LOTS:"+CalculatePositionSize();
-    LabelTextChange(0,"SL_LABEL",s);
+ 
   
 
   
@@ -229,18 +230,56 @@ Print("both lines ");
 
      
     // Handle the chart event for object movement - SL_Line
-    if (id == CHARTEVENT_OBJECT_DRAG && StringFind(sparam, "SL_LINE") >= 0)
+    if (id == CHARTEVENT_OBJECT_DRAG)
     {
+    
+         if(StringFind(sparam, "SL_LINE") >= 0){
+        
         // The SL_LINE has been moved
         slPrice = ObjectGetDouble(0, "SL_LINE", OBJPROP_PRICE,0);
-        Print("Stop Loss Line moved. New SL Price: ", slPrice);
+        //Print("Stop Loss Line moved. New SL Price: ", slPrice);
+        
+        if(!tradeActive){
+        
+        
+        
+        // move target line twice dist in the opp direction from current price
+         double lots= CalculatePositionSize();
+        double bidPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+        if(slPrice<bidPrice){
+         
+         double tp = bidPrice+MathAbs(slPrice-bidPrice)*1.5;
+        targetPrice = tp;
+
+   string s = "LOT SIZE: "+lots;
+ButtonTextChange(0,"SL_LABEL",s);
+ HLineMove(0,"TARGET_LINE",tp);
+        }else{
+        
+        
+         double tp = bidPrice-MathAbs(slPrice-bidPrice)*1.5;
+        targetPrice = tp;
+
+   string s = "LOT SIZE: "+lots;
+ButtonTextChange(0,"SL_LABEL",s);
+ HLineMove(0,"TARGET_LINE",tp);
+        
+        }
+        
+        
+        
+        
+     
+         }
+         }
+         else if(StringFind(sparam, "TARGET_LINE") >= 0){
+         targetPrice = ObjectGetDouble(0, "TARGET_LINE", OBJPROP_PRICE,0);
+         
+         }
+        
+        
     }
-    if (id == CHARTEVENT_OBJECT_DRAG && StringFind(sparam, "TARGET_LINE") >= 0)
-    {
-        // The SL_LINE has been moved
-        targetPrice = ObjectGetDouble(0, "TARGET_LINE", OBJPROP_PRICE,0);
-        Print("Target Line moved. New Target: ", targetPrice);
-    }
+  
         if (id == CHARTEVENT_OBJECT_CLICK && StringFind(sparam, "BUY_BUTTON")>=0  )
     {
          
@@ -248,6 +287,7 @@ Print("both lines ");
         // The SL_LINE has been moved
         //targetPrice = ObjectGetDouble(0, "TARGET_LINE", OBJPROP_PRICE,0);
         Print("BUY CLICKED");
+        placeOrder();
     }
 }
 
@@ -255,21 +295,22 @@ Print("both lines ");
 
 double CalculatePositionSize()
 {
-double standardLotSize = 100000.0;
+
 double accountSize= AccountInfoDouble(ACCOUNT_BALANCE);
-double riskPercentage = InpRiskPerTrade;
 double stopLossDistance = MathAbs(slPrice-currentPrice);
     // Calculate the risk amount
-    double riskAmount = accountSize * (riskPercentage / 100.0);
+    double riskAmount = accountSize * (InpRiskPerTrade / 100.0);
 
     // Calculate position size using the formula: Position Size = Risk Amount / Stop Loss Distance
     double positionSize = riskAmount / stopLossDistance;
     double standardLots = positionSize / standardLotSize;
     
-      return NormalizeDouble(standardLots,2);
-   
+     
+    double result = MathRound(standardLots * 10) / 10.0;
+     
+   Print(result);
+   return result;
 }
-
 
 
 
@@ -359,118 +400,31 @@ void createBuyButton(){
    int y_step=(int)y_distance/32;
 //--- set the button coordinates and its size
    int x=(int)x_distance/32;
-   x = x-50;
+   x = x-40;
    int y=(int)y_distance/32;
    y= y+40;
    int x_size=120;
    int y_size=60;
 //--- create the button
 
-   ButtonCreate(0,"SELL_BUTTON",0,x+130,y,x_size,y_size,InpCorner,"Sell",InpFont,InpFontSize,
-      clrWhite,clrRed,InpBorderColor,InpState,InpBack,InpSelection,InpHidden,InpZOrder);
-
    ButtonCreate(0,"BUY_BUTTON",0,x,y,x_size,y_size,InpCorner,"Buy",InpFont,InpFontSize,
-      clrWhite,clrGreen,InpBorderColor,InpState,InpBack,InpSelection,InpHidden,InpZOrder);
-      
-      if(!LabelCreate(0,"SL_LABEL",0,x+360,y+30,CORNER_LEFT_UPPER,"HELLO",InpFont,15,
-      InpColor,InpAngle,InpAnchor,InpBack,InpSelection,InpHidden,InpZOrder))
-     {
-      return;
-     }
+      clrWhite,clrGreen,InpBorderColor,InpState,InpBack,InpSelection,InpHidden,90);
 
+
+   ButtonCreate(0,"SELL_BUTTON",0,x+130,y,x_size,y_size,InpCorner,"Sell",InpFont,InpFontSize,
+      clrWhite,clrRed,InpBorderColor,InpState,InpBack,InpSelection,InpHidden,91);
+
+     ButtonCreate(0,"SL_LABEL",0,x,y+90,360,y_size,InpCorner,"LOT SIZE: ",InpFont,InpFontSize,
+      clrWhite,clrBlack,InpBorderColor,InpState,InpBack,InpSelection,InpHidden,92);
 }
 
-bool LabelCreate(const long              chart_ID=0,               // chart's ID
-                 const string            name="Label",             // label name
-                 const int               sub_window=0,             // subwindow index
-                 const int               x=0,                      // X coordinate
-                 const int               y=0,                      // Y coordinate
-                 const ENUM_BASE_CORNER  corner=CORNER_LEFT_UPPER, // chart corner for anchoring
-                 const string            text="Label",             // text
-                 const string            font="Arial",             // font
-                 const int               font_size=10,             // font size
-                 const color             clr=clrRed,               // color
-                 const double            angle=0.0,                // text slope
-                 const ENUM_ANCHOR_POINT anchor=ANCHOR_LEFT_UPPER, // anchor type
-                 const bool              back=false,               // in the background
-                 const bool              selection=false,          // highlight to move
-                 const bool              hidden=true,              // hidden in the object list
-                 const long              z_order=0)                // priority for mouse click
-  {
-//--- reset the error value
-   ResetLastError();
-//--- create a text label
-   if(!ObjectCreate(chart_ID,name,OBJ_LABEL,sub_window,0,0))
-     {
-      Print(__FUNCTION__,
-            ": failed to create text label! Error code = ",GetLastError());
-      return(false);
-     }
-//--- set label coordinates
-   ObjectSetInteger(chart_ID,name,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(chart_ID,name,OBJPROP_YDISTANCE,y);
-//--- set the chart's corner, relative to which point coordinates are defined
-   ObjectSetInteger(chart_ID,name,OBJPROP_CORNER,corner);
-//--- set the text
-   ObjectSetString(chart_ID,name,OBJPROP_TEXT,text);
-//--- set text font
-   ObjectSetString(chart_ID,name,OBJPROP_FONT,font);
-//--- set font size
-   ObjectSetInteger(chart_ID,name,OBJPROP_FONTSIZE,font_size);
-//--- set the slope angle of the text
-   ObjectSetDouble(chart_ID,name,OBJPROP_ANGLE,angle);
-//--- set anchor type
-   ObjectSetInteger(chart_ID,name,OBJPROP_ANCHOR,anchor);
-//--- set color
-   ObjectSetInteger(chart_ID,name,OBJPROP_COLOR,clr);
-//--- display in the foreground (false) or background (true)
-   ObjectSetInteger(chart_ID,name,OBJPROP_BACK,back);
-//--- enable (true) or disable (false) the mode of moving the label by mouse
-   ObjectSetInteger(chart_ID,name,OBJPROP_SELECTABLE,selection);
-   ObjectSetInteger(chart_ID,name,OBJPROP_SELECTED,selection);
-//--- hide (true) or display (false) graphical object name in the object list
-   ObjectSetInteger(chart_ID,name,OBJPROP_HIDDEN,hidden);
-//--- set the priority for receiving the event of a mouse click in the chart
-   ObjectSetInteger(chart_ID,name,OBJPROP_ZORDER,z_order);
-//--- successful execution
-   return(true);
-  }
-//+------------------------------------------------------------------+
-//| Move the text label                                              |
-//+------------------------------------------------------------------+
-bool LabelMove(const long   chart_ID=0,   // chart's ID
-               const string name="Label", // label name
-               const int    x=0,          // X coordinate
-               const int    y=0)          // Y coordinate
-  {
-//--- reset the error value
-   ResetLastError();
-//--- move the text label
-   if(!ObjectSetInteger(chart_ID,name,OBJPROP_XDISTANCE,x))
-     {
-      Print(__FUNCTION__,
-            ": failed to move X coordinate of the label! Error code = ",GetLastError());
-      return(false);
-     }
-   if(!ObjectSetInteger(chart_ID,name,OBJPROP_YDISTANCE,y))
-     {
-      Print(__FUNCTION__,
-            ": failed to move Y coordinate of the label! Error code = ",GetLastError());
-      return(false);
-     }
-//--- successful execution
-   return(true);
-  }
 
-//+------------------------------------------------------------------+
-//| Change the label text                                            |
-//+------------------------------------------------------------------+
-bool LabelTextChange(const long   chart_ID=0,   // chart's ID
-                     const string name="Label", // object name
-                     const string text="Text")  // text
+bool ButtonTextChange(const long   chart_ID=0,    // chart's ID
+                      const string name="Button", // button name
+                      const string text="Text")   // text
   {
 //--- reset the error value
-   ResetLastError();
+   //ResetLastError();
 //--- change object text
    if(!ObjectSetString(chart_ID,name,OBJPROP_TEXT,text))
      {
@@ -481,3 +435,95 @@ bool LabelTextChange(const long   chart_ID=0,   // chart's ID
 //--- successful execution
    return(true);
   }
+  
+  int placeOrder(){
+  
+ 
+ MqlTradeRequest request={};
+   request.action = TRADE_ACTION_DEAL;
+   request.magic=magic_number;                  // ORDER_MAGIC
+   request.symbol=_Symbol;                      // symbol
+   request.volume=CalculatePositionSize();                          // volume in 0.1 lots
+   request.sl=slPrice;                                // Stop Loss is not specified
+   request.tp=targetPrice;                                // Take Profit is not specified     
+//--- form the order type
+   request.type=ORDER_TYPE_BUY;                // order type
+   
+   
+   MqlTick last_tick={};
+   SymbolInfoTick(_Symbol,last_tick);
+//--- form the price for the pending order
+   request.price=last_tick.ask;  // open price
+//--- send a trade request
+   MqlTradeResult result={};
+   int ticket = OrderSend(request,result);
+//--- write the server reply to log  
+   Print(__FUNCTION__,":",result.comment);
+   if(result.retcode==10009) 
+   {
+   Print(result.bid,result.ask,result.price);
+   }
+  
+   Print(result.retcode,result.bid,result.ask,result.price);
+   //Print(OrderGetDouble(ORDER_SL));
+   Print(result.deal);
+   //modifyStopLoss(result.deal,1.07790);
+   
+//--- return code of the trade server reply
+   return result.retcode;
+
+      }
+      
+      
+      
+ void modifyStopLoss(int ticket, double newStopLoss)
+{
+    //--- declare and initialize the trade request and result of trade request
+   MqlTradeRequest request;
+   MqlTradeResult  result;
+   int total=PositionsTotal(); // number of open positions   
+//--- iterate over all open positions
+   for(int i=0; i<total; i++)
+     {
+      //--- parameters of the order
+      ulong  position_ticket=PositionGetTicket(i);// ticket of the position
+      string position_symbol=PositionGetString(POSITION_SYMBOL); // symbol 
+      int    digits=(int)SymbolInfoInteger(position_symbol,SYMBOL_DIGITS); // number of decimal places
+      ulong  magic=PositionGetInteger(POSITION_MAGIC); // MagicNumber of the position
+      double volume=PositionGetDouble(POSITION_VOLUME);    // volume of the position
+      double sl=PositionGetDouble(POSITION_SL);  // Stop Loss of the position
+      double tp=PositionGetDouble(POSITION_TP);  // Take Profit of the position
+      ENUM_POSITION_TYPE type=(ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);  // type of the position
+      //--- output information about the position
+      PrintFormat("#%I64u %s  %s  %.2f  %s  sl: %s  tp: %s  [%I64d]",
+                  position_ticket,
+                  position_symbol,
+                  EnumToString(type),
+                  volume,
+                  DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN),digits),
+                  DoubleToString(sl,digits),
+                  DoubleToString(tp,digits),
+                  magic);
+      //--- if the MagicNumber matches, Stop Loss and Take Profit are not defined
+      if(magic==magic_number )
+        {
+      
+         ZeroMemory(request);
+         ZeroMemory(result);
+         //--- setting the operation parameters
+         request.action  =TRADE_ACTION_SLTP; // type of trade operation
+         request.position=position_ticket;   // ticket of the position
+         request.symbol=position_symbol;     // symbol 
+         request.sl      =newStopLoss;                // Stop Loss of the position
+        request.tp = tp;
+         request.magic=magic_number;         // MagicNumber of the position
+         //--- output information about the modification
+         PrintFormat("Modify #%I64d %s %s",position_ticket,position_symbol,EnumToString(type));
+         //--- send the request
+         if(!OrderSend(request,result))
+            PrintFormat("OrderSend error %d",GetLastError());  // if unable to send the request, output the error code
+         //--- information about the operation   
+         PrintFormat("retcode=%u  deal=%I64u  order=%I64u",result.retcode,result.deal,result.order);
+        }
+     }
+}
